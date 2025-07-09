@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stream Overlay</title>
+  <style>
+    body {
+      margin: 0;
+      background: transparent;
+      font-family: sans-serif;
+      color: white;
+    }
+    .box {
+      background: rgba(0, 0, 0, 0.6);
+      border: 2px solid white;
+      border-radius: 10px;
+      padding: 10px;
+      width: 320px;
+      height: 300px;
+      overflow-y: hidden;
+      position: relative;
+    }
+    .category {
+      margin-bottom: 10px;
+    }
+    .category-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid white;
+      margin-bottom: 4px;
+    }
+    .category-header h2 {
+      font-size: 1.2em;
+      margin: 0;
+    }
+    .timer {
+      font-size: 0.9em;
+      color: #ccc;
+    }
+    .item {
+      display: flex;
+      align-items: center;
+      padding: 4px 0;
+    }
+    img {
+      height: 32px;
+      width: 32px;
+      margin-right: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="box" id="scrollBox">
+  </div>
+
+  <script>
+    function pad(n) {
+      return n < 10 ? '0' + n : n;
+    }
+
+    function getCountdown(ms) {
+      const h = pad(Math.floor(ms / 3.6e6));
+      const m = pad(Math.floor((ms % 3.6e6) / 6e4));
+      const s = pad(Math.floor((ms % 6e4) / 1000));
+      return `${h}h ${m}m ${s}s`;
+    }
+
+    function getRestockTimers() {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const timeSinceStart = now.getTime() - today.getTime();
+
+      function getNextReset(interval) {
+        return today.getTime() + Math.ceil(timeSinceStart / interval) * interval;
+      }
+
+      return {
+        seeds: getNextReset(5 * 60 * 1000),
+        gears: getNextReset(5 * 60 * 1000),
+        eggs: getNextReset(30 * 60 * 1000),
+      };
+    }
+
+    let timers = getRestockTimers();
+
+    function updateTimers() {
+      const now = Date.now();
+      for (const key in timers) {
+        const diff = timers[key] - now;
+        if (diff >= 0) {
+          document.getElementById(`timer-${key}`).textContent = getCountdown(diff);
+        }
+      }
+    }
+
+    setInterval(updateTimers, 1000);
+
+    const seedOrder = [
+      "Carrot", "Strawberry", "Blueberry", "Orange Tulip", "Tomato", "Daffodil",
+      "Watermelon", "Pumpkin", "Apple", "Bamboo", "Coconut", "Cactus", "Dragon Fruit",
+      "Mango", "Grape", "Mushroom", "Pepper", "Cacao", "Beanstalk", "Ember Lily",
+      "Sugar Apple", "Burning Bud"
+    ];
+
+    const gearOrder = [
+      "Watering Can", "Trowel", "Recall Wrench", "Basic Sprinkler", "Advanced Sprinkler",
+      "Godly Sprinkler", "Magnifying Glass", "Tanning Mirror", "Master Sprinkler",
+      "Cleaning Spray", "Favorite Tool", "Harvest Tool", "Friendship Pot"
+    ];
+
+    async function fetchAll() {
+      const [stockRes, weatherRes] = await Promise.all([
+        fetch('https://api.joshlei.com/v2/growagarden/stock'),
+        fetch('https://api.joshlei.com/v2/growagarden/weather')
+      ]);
+
+      const stock = await stockRes.json();
+      const weather = await weatherRes.json();
+
+      updateCategory('seeds', stock.seed_stock, seedOrder);
+      updateCategory('gears', stock.gear_stock, gearOrder);
+      updateEggs(stock.egg_stock); 
+
+      const weatherContainer = document.getElementById('weather');
+      weatherContainer.innerHTML = '';
+      let active = false;
+      weather.weather.forEach(w => {
+        if (w.active) {
+          active = true;
+          const div = document.createElement('div');
+          div.className = 'item';
+          div.innerHTML = `<img src="${w.icon}" alt="${w.weather_name}" /><span>${w.weather_name}</span>`;
+          weatherContainer.appendChild(div);
+        }
+      });
+      if (!active) {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.textContent = 'None Active';
+        weatherContainer.appendChild(div);
+      }
+    }
+
+    function updateCategory(id, items, order) {
+      const container = document.getElementById(id);
+      container.innerHTML = '';
+      if (!items) return;
+
+      const itemLookup = {};
+      items.forEach(item => {
+        itemLookup[item.display_name] = item;
+      });
+
+      order.forEach(itemName => {
+        const item = itemLookup[itemName];
+        if (item) {
+          const div = document.createElement('div');
+          div.className = 'item';
+          div.innerHTML = `
+            <img src="${item.icon}" alt="${item.display_name}" />
+            <span>${item.display_name} x${item.quantity}</span>`;
+          container.appendChild(div);
+        }
+      });
+    }
+
+    function updateEggs(eggs) {
+      const eggsContainer = document.getElementById('eggs');
+      eggsContainer.innerHTML = '';
+      if (!eggs) return;
+
+      eggs.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <img src="${item.icon}" alt="${item.display_name}" />
+          <span>${item.display_name} x${item.quantity}</span>`;
+        eggsContainer.appendChild(div);
+      });
+    }
+
+    let scrollDirection = 'down'; 
+    function autoScroll() {
+      const el = document.getElementById('scrollBox');
+      const scrollSpeed = 1; 
+
+      if (scrollDirection === 'down' && el.scrollTop < el.scrollHeight - el.clientHeight) {
+        el.scrollTop += scrollSpeed;
+      } else {
+        scrollDirection = 'up';
+      }
+
+      if (scrollDirection === 'up' && el.scrollTop > 0) {
+        el.scrollTop -= scrollSpeed;
+      } else {
+        scrollDirection = 'down';
+      }
+    }
+
+    setInterval(autoScroll, 20); 
+
+    setInterval(fetchAll, 10000); 
+    fetchAll(); 
+
+    function createCategories() {
+      const box = document.getElementById('scrollBox');
+      const categories = ['seeds', 'gears', 'eggs', 'weather'];  
+
+      categories.forEach(category => {
+        const categoryDiv = document.createElement('div');
+        categoryDiv.classList.add('category');
+        
+        const headerDiv = document.createElement('div');
+        headerDiv.classList.add('category-header');
+
+        const h2 = document.createElement('h2');
+        h2.textContent = category.charAt(0).toUpperCase() + category.slice(1);
+        
+        const timerSpan = document.createElement('span');
+        timerSpan.classList.add('timer');
+        timerSpan.id = `timer-${category}`;
+        
+        headerDiv.appendChild(h2);
+        headerDiv.appendChild(timerSpan);
+        categoryDiv.appendChild(headerDiv);
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.id = category;
+        categoryDiv.appendChild(contentDiv);
+        
+        box.appendChild(categoryDiv);
+      });
+    }
+
+    createCategories();  
+  </script>
+</body>
+</html>
